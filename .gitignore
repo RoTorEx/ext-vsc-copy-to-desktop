@@ -37,5 +37,8 @@ temp/
 # Local generated junk
 *.local
 
+# VS Code extension artifacts
+*.vsix
+
 # Vibecoding Kernel source pointer (local machine path; must not be committed)
 .vibe/KERNEL_SOURCE

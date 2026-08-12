@@ -1,0 +1,54 @@
+{
+  "name": "copy-to-desktop",
+  "displayName": "Copy to Desktop",
+  "description": "Copy a file to the desktop from VS Code.",
+  "version": "0.1.0",
+  "publisher": "alex",
+  "license": "MIT",
+  "icon": "icon.png",
+  "engines": {
+    "vscode": "^1.70.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:copyToDesktop.copy"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "copyToDesktop.copy",
+        "title": "Copy to Desktop",
+        "category": "File",
+        "icon": "$(desktop-download)"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "copyToDesktop.copy",
+          "group": "2_workspace@5"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "copyToDesktop.copy",
+          "group": "9_cutcopypaste@5"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "copyToDesktop.copy"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "test": "echo \"No tests yet.\""
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.70.0"
+  }
+}
