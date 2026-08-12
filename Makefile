@@ -1,4 +1,4 @@
-.PHONY: all build install clean icon lint
+.PHONY: all build install clean icon lint release publish
 
 EXTENSION_NAME := copy-to-desktop
 PUBLISHER := alex
@@ -33,6 +33,27 @@ install: build
 	@echo "Installing $(VSIX) to local VS Code..."
 	@code --install-extension $(VSIX) --force
 	@echo "Installed. Reload VS Code to activate."
+
+release:
+ifndef VERSION
+	$(error VERSION is not set. Usage: make release VERSION=0.2.0)
+endif
+	@echo "Releasing $(EXTENSION_NAME) v$(VERSION)..."
+	@python3 -c "import json; d=json.load(open('package.json')); d['version']='$(VERSION)'; json.dump(d, open('package.json','w'), indent=2); print('Updated package.json to $(VERSION)')"
+	@make install
+
+publish:
+ifndef VERSION
+	$(error VERSION is not set. Usage: make publish VERSION=0.2.0)
+endif
+	@echo "Publishing $(EXTENSION_NAME) v$(VERSION)..."
+	@make release VERSION=$(VERSION)
+	@git add -A
+	@git commit -m "feat: release v$(VERSION)" || true
+	@git tag -a v$(VERSION) -m "Release v$(VERSION)"
+	@git push origin main
+	@git push origin v$(VERSION)
+	@echo "Published v$(VERSION)."
 
 clean:
 	@rm -rf $(DIST_DIR)

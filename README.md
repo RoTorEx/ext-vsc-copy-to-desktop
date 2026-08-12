@@ -17,6 +17,20 @@ make install
 
 Then reload VS Code.
 
+## Release a new version
+
+Bump `package.json`, build, install locally, commit, tag, and push:
+
+```bash
+make publish VERSION=0.2.0
+```
+
+To only bump and install without committing:
+
+```bash
+make release VERSION=0.2.0
+```
+
 ## Run locally for development
 
 Open this folder in VS Code and press `F5` to launch a new Extension Development Host window.
