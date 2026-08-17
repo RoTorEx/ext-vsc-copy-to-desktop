@@ -15,3 +15,4 @@ Tracks real product and release progress.
 
 ### Added
 - Folder selections can now be copied recursively to the Desktop.
+- Copy operations now show start, success, and failure feedback through VS Code notifications and the status bar.

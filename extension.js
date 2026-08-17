@@ -13,28 +13,56 @@ function activate(context) {
     output.appendLine(`Copy to Desktop extension activated. Version: ${context.extension.packageJSON.version}`);
 
     const disposable = vscode.commands.registerCommand('copyToDesktop.copy', async (uri, selectedUris) => {
-        output.appendLine(`Command invoked. uri: ${uri ? uri.fsPath : 'undefined'}`);
+        try {
+            output.appendLine(`Command invoked. uri: ${uri ? uri.fsPath : 'undefined'}`);
 
-        // VS Code can pass the URI as the first argument, or as part of a selection array.
-        const targetUri = uri || (selectedUris && selectedUris[0]);
-
-        if (!targetUri || targetUri.scheme !== 'file') {
-            // Fall back to the active text editor if the command was run from the palette.
-            const activeEditor = vscode.window.activeTextEditor;
-            if (activeEditor && activeEditor.document && activeEditor.document.uri && activeEditor.document.uri.scheme === 'file') {
-                return copyResourceToDesktop(activeEditor.document.uri, output);
+            const targetUri = getTargetUri(uri, selectedUris);
+            if (!targetUri || targetUri.scheme !== 'file') {
+                notifyFailure('Copy to Desktop: please select a file or folder in the explorer.', output);
+                output.appendLine('No valid file or folder URI provided.');
+                return;
             }
 
-            vscode.window.showErrorMessage('Copy to Desktop: please select a file or folder in the explorer.');
-            output.appendLine('No valid file or folder URI provided.');
-            return;
+            await vscode.window.withProgress(
+                {
+                    location: vscode.ProgressLocation.Notification,
+                    title: 'Copy to Desktop',
+                    cancellable: false
+                },
+                async (progress) => {
+                    const message = `Copy to Desktop: copying ${path.basename(targetUri.fsPath)}...`;
+                    vscode.window.setStatusBarMessage(message, 5000);
+                    progress.report({ message });
+                    await copyResourceToDesktop(targetUri, output);
+                }
+            );
+        } catch (err) {
+            notifyFailure(`Copy to Desktop failed: ${err.message}`, output);
+            output.appendLine(`Unexpected error: ${err.stack || err.message}`);
         }
-
-        await copyResourceToDesktop(targetUri, output);
     });
 
     context.subscriptions.push(disposable);
     context.subscriptions.push(output);
+}
+
+function getTargetUri(uri, selectedUris) {
+    // VS Code can pass the URI as the first argument, or as part of a selection array.
+    if (uri) {
+        return uri;
+    }
+
+    if (selectedUris && selectedUris[0]) {
+        return selectedUris[0];
+    }
+
+    // Fall back to the active text editor if the command was run from the palette.
+    const activeEditor = vscode.window.activeTextEditor;
+    if (activeEditor && activeEditor.document && activeEditor.document.uri) {
+        return activeEditor.document.uri;
+    }
+
+    return undefined;
 }
 
 async function copyResourceToDesktop(uri, output) {
@@ -45,12 +73,12 @@ async function copyResourceToDesktop(uri, output) {
     try {
         stat = await fs.promises.stat(sourcePath);
         if (!stat.isFile() && !stat.isDirectory()) {
-            vscode.window.showErrorMessage('Copy to Desktop: only files and folders are supported.');
+            notifyFailure('Copy to Desktop: only files and folders are supported.', output);
             output.appendLine('Selection is not a file or folder.');
             return;
         }
     } catch (err) {
-        vscode.window.showErrorMessage(`Copy to Desktop: cannot read selection. ${err.message}`);
+        notifyFailure(`Copy to Desktop: cannot read selection. ${err.message}`, output);
         output.appendLine(`Stat error: ${err.message}`);
         return;
     }
@@ -61,7 +89,7 @@ async function copyResourceToDesktop(uri, output) {
     const destPath = getUniqueDesktopPath(sourcePath, desktopPath, isDirectory);
 
     if (isDirectory && isSubpath(destPath, sourcePath)) {
-        vscode.window.showErrorMessage('Copy to Desktop: cannot copy a folder into itself.');
+        notifyFailure('Copy to Desktop: cannot copy a folder into itself.', output);
         output.appendLine(`Destination is inside source folder: ${destPath}`);
         return;
     }
@@ -74,12 +102,30 @@ async function copyResourceToDesktop(uri, output) {
         }
 
         const message = `Copied ${resourceType} to Desktop: ${path.basename(destPath)}`;
-        vscode.window.showInformationMessage(message);
+        notifySuccess(message, output);
         output.appendLine(`Success: ${destPath}`);
     } catch (err) {
-        vscode.window.showErrorMessage(`Copy to Desktop failed: ${err.message}`);
+        notifyFailure(`Copy to Desktop failed: ${err.message}`, output);
         output.appendLine(`Copy error: ${err.message}`);
     }
+}
+
+function notifySuccess(message, output) {
+    vscode.window.setStatusBarMessage(message, 5000);
+    vscode.window.showInformationMessage(message, 'Show Log').then((action) => {
+        if (action === 'Show Log') {
+            output.show(true);
+        }
+    });
+}
+
+function notifyFailure(message, output) {
+    vscode.window.setStatusBarMessage(message, 8000);
+    vscode.window.showErrorMessage(message, 'Show Log').then((action) => {
+        if (action === 'Show Log') {
+            output.show(true);
+        }
+    });
 }
 
 function getUniqueDesktopPath(sourcePath, desktopPath, isDirectory) {
