@@ -12,3 +12,6 @@ Tracks real product and release progress.
 - Makefile with `build`, `install`, `clean`, and `icon` targets.
 
 ## [Unreleased]
+
+### Added
+- Folder selections can now be copied recursively to the Desktop.

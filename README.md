@@ -5,9 +5,9 @@ A minimal VS Code extension that adds a **Copy to Desktop** option to the Explor
 ## How to use
 
 1. Open a folder in VS Code.
-2. Right-click any file in the Explorer sidebar, or right-click an editor tab.
+2. Right-click any file or folder in the Explorer sidebar, or right-click an editor tab.
 3. Select **Copy to Desktop**.
-4. The file is copied to your macOS Desktop. If a file with the same name already exists, a numbered suffix is appended automatically.
+4. The file or folder is copied to your macOS Desktop. If an item with the same name already exists, a numbered suffix is appended automatically.
 
 ## Build and install locally
 

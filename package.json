@@ -1,7 +1,7 @@
 {
   "name": "copy-to-desktop",
   "displayName": "Copy to Desktop",
-  "description": "Copy a file to the desktop from VS Code.",
+  "description": "Copy a file or folder to the desktop from VS Code.",
   "version": "0.1.0",
   "publisher": "alex",
   "license": "MIT",
