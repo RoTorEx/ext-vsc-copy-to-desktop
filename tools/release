@@ -1,0 +1,108 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import json
+import re
+import subprocess
+import sys
+from datetime import date
+from pathlib import Path
+
+
+SEMVER = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
+
+
+def fail(message: str) -> None:
+    raise SystemExit(f"ERROR: {message}")
+
+
+def run(*args: str, capture: bool = False) -> str:
+    result = subprocess.run(
+        args,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE if capture else None,
+    )
+    return result.stdout.strip() if capture else ""
+
+
+def version_tuple(value: str) -> tuple[int, int, int]:
+    match = SEMVER.fullmatch(value)
+    if not match:
+        fail("version must use MAJOR.MINOR.PATCH without a v prefix")
+    return tuple(int(part) for part in match.groups())
+
+
+def release_changelog(text: str, version: str) -> str:
+    marker = "## [Unreleased]"
+    if text.count(marker) != 1:
+        fail("CHANGELOG.md must contain exactly one ## [Unreleased] section")
+
+    start = text.index(marker) + len(marker)
+    next_release = text.find("\n## [", start)
+    end = len(text) if next_release == -1 else next_release
+    unreleased = text[start:end].strip()
+    if not unreleased:
+        fail("CHANGELOG.md Unreleased section is empty")
+
+    before = text[:start].rstrip()
+    after = text[end:].lstrip()
+    released = f"## [{version}] - {date.today().isoformat()}\n\n{unreleased}"
+    result = f"{before}\n\n\n{released}\n"
+    if after:
+        result += f"\n{after.rstrip()}\n"
+    return result
+
+
+def main() -> int:
+    if len(sys.argv) != 1:
+        fail("release takes no arguments; run make release and answer its prompt")
+
+    root = Path.cwd()
+    package_path = root / "package.json"
+    changelog_path = root / "CHANGELOG.md"
+    if not package_path.is_file() or not changelog_path.is_file():
+        fail("run release from the project root")
+
+    branch = run("git", "branch", "--show-current", capture=True)
+    if branch != "main":
+        fail(f"releases must be created from main, not {branch or 'detached HEAD'}")
+    if run("git", "status", "--short", capture=True):
+        fail("worktree must be clean before release")
+
+    package = json.loads(package_path.read_text(encoding="utf-8"))
+    current = str(package.get("version", ""))
+    current_tuple = version_tuple(current)
+    target = input("Release version (MAJOR.MINOR.PATCH): ").strip()
+    target_tuple = version_tuple(target)
+    if target_tuple <= current_tuple:
+        fail(f"release version must be greater than current version {current}")
+
+    tag = f"v{target}"
+    if subprocess.run(
+        ["git", "rev-parse", "-q", "--verify", f"refs/tags/{tag}"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    ).returncode == 0:
+        fail(f"tag already exists: {tag}")
+
+    run("make", "check")
+    package["version"] = target
+    package_path.write_text(json.dumps(package, indent=2) + "\n", encoding="utf-8")
+    changelog_path.write_text(
+        release_changelog(changelog_path.read_text(encoding="utf-8"), target),
+        encoding="utf-8",
+    )
+    run("make", "check")
+    run("git", "add", "--", "package.json", "CHANGELOG.md")
+    run("git", "commit", "-m", f"build: release {target}")
+    run("git", "tag", "-a", tag, "-m", f"Release {tag}")
+    print(f"Prepared {tag}. Push it with: make release-push")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except subprocess.CalledProcessError as exc:
+        fail(f"command failed with exit code {exc.returncode}: {' '.join(exc.cmd)}")

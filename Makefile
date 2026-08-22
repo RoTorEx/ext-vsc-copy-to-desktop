@@ -1,10 +1,10 @@
-.PHONY: all build install clean icon lint release publish
+.PHONY: all build install clean icon lint check release release-push vibe-kernel-path vibe-kernel-set vibe-pull
 
 EXTENSION_NAME := copy-to-desktop
 PUBLISHER := alex
 DIST_DIR := dist
-VERSION := $(shell python3 -c "import json; print(json.load(open('package.json'))['version'])")
-VSIX := $(DIST_DIR)/$(EXTENSION_NAME)-$(VERSION).vsix
+PACKAGE_VERSION := $(shell python3 -c "import json; print(json.load(open('package.json'))['version'])")
+VSIX := $(DIST_DIR)/$(EXTENSION_NAME)-$(PACKAGE_VERSION).vsix
 
 all: build
 
@@ -13,6 +13,8 @@ lint:
 	@node --check extension.js
 	@python3 -m json.tool package.json >/dev/null
 	@echo "Lint passed."
+
+check: lint
 
 icon:
 	@echo "Rendering icon.svg to icon.png (128x128)..."
@@ -35,27 +37,34 @@ install: build
 	@echo "Installed. Reload VS Code to activate."
 
 release:
-ifndef VERSION
-	$(error VERSION is not set. Usage: make release VERSION=0.2.0)
-endif
-	@echo "Releasing $(EXTENSION_NAME) v$(VERSION)..."
-	@python3 -c "import json; d=json.load(open('package.json')); d['version']='$(VERSION)'; json.dump(d, open('package.json','w'), indent=2); print('Updated package.json to $(VERSION)')"
-	@make install
+	@python3 tools/release
 
-publish:
-ifndef VERSION
-	$(error VERSION is not set. Usage: make publish VERSION=0.2.0)
-endif
-	@echo "Publishing $(EXTENSION_NAME) v$(VERSION)..."
-	@make release VERSION=$(VERSION)
-	@git add -A
-	@git commit -m "feat: release v$(VERSION)" || true
-	@git tag -a v$(VERSION) -m "Release v$(VERSION)"
-	@git push origin main
-	@git push origin v$(VERSION)
-	@echo "Published v$(VERSION)."
+release-push:
+	@set -eu; \
+	branch="$$(git branch --show-current)"; \
+	test "$$branch" = "main" || { echo "ERROR: releases must be pushed from main, not $$branch." >&2; exit 1; }; \
+	version="$$(python3 -c "import json; print(json.load(open('package.json'))['version'])")"; \
+	tag="v$$version"; \
+	git rev-parse -q --verify "refs/tags/$$tag" >/dev/null || { echo "ERROR: missing $$tag. Run make release." >&2; exit 1; }; \
+	git push origin main --follow-tags
 
 clean:
 	@rm -rf $(DIST_DIR)
 	@rm -f *.vsix
 	@echo "Cleaned build artifacts."
+
+vibe-kernel-path:
+	@test -f .vibe/KERNEL_SOURCE || { echo "Missing .vibe/KERNEL_SOURCE. Run: make vibe-kernel-set" >&2; exit 1; }
+	@sed -n '1p' .vibe/KERNEL_SOURCE
+
+vibe-kernel-set:
+	@mkdir -p .vibe; \
+	if [ -n "$(KERNEL)" ]; then kernel_root="$(KERNEL)"; else printf "Kernel path: "; read -r kernel_root; fi; \
+	case "$$kernel_root" in /*) ;; *) echo "ERROR: kernel path must be absolute." >&2; exit 1;; esac; \
+	test -f "$$kernel_root/tools/vibe-pull" || { echo "ERROR: invalid kernel path: $$kernel_root" >&2; exit 1; }; \
+	printf "%s\n" "$$kernel_root" > .vibe/KERNEL_SOURCE
+
+vibe-pull:
+	@test -f .vibe/KERNEL_SOURCE || { echo "Missing .vibe/KERNEL_SOURCE. Run: make vibe-kernel-set" >&2; exit 1; }
+	@kernel_root="$$(sed -n '1p' .vibe/KERNEL_SOURCE)"; \
+	python3 "$$kernel_root/tools/vibe-pull" .

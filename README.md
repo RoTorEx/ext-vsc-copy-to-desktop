@@ -19,16 +19,25 @@ Then reload VS Code.
 
 ## Release a new version
 
-Bump `package.json`, build, install locally, commit, tag, and push:
+Prepare a release from a clean `main` branch:
 
 ```bash
-make publish VERSION=0.2.0
+make release
 ```
 
-To only bump and install without committing:
+Enter the exact `MAJOR.MINOR.PATCH` version when prompted. The command runs
+checks, updates `package.json` and `CHANGELOG.md`, creates a dedicated release
+commit, and creates the matching annotated tag. Push only after review:
 
 ```bash
-make release VERSION=0.2.0
+make release-push
+```
+
+## Kernel sync
+
+```bash
+make vibe-kernel-set
+make vibe-pull
 ```
 
 ## Run locally for development
