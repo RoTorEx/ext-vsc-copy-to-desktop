@@ -47,3 +47,8 @@ Open this folder in VS Code and press `F5` to launch a new Extension Development
 ## Credits
 
 - Icon: [`monitor-down`](https://lucide.dev/icons/monitor-down) from [Lucide](https://lucide.dev), licensed under ISC.
+
+## Local usage logs
+
+See [usage logging](docs/usage-logging.md) for product events, privacy, paths,
+rotation and interpretation limits.

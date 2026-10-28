@@ -11,10 +11,12 @@ all: build
 lint:
 	@echo "Running lint checks..."
 	@node --check extension.js
+	@node --check usage.js
 	@python3 -m json.tool package.json >/dev/null
 	@echo "Lint passed."
 
 check: lint
+	@node --test tests/*.test.js
 
 icon:
 	@echo "Rendering icon.svg to icon.png (128x128)..."
@@ -27,7 +29,7 @@ build: icon
 	@echo "Building $(VSIX)..."
 	@rm -rf $(DIST_DIR)
 	@mkdir -p $(DIST_DIR)/extension
-	@cp package.json extension.js README.md icon.png $(DIST_DIR)/extension/
+	@cp package.json extension.js usage.js README.md icon.png $(DIST_DIR)/extension/
 	@cd $(DIST_DIR) && zip -r $(notdir $(VSIX)) extension
 	@echo "Built: $(VSIX)"
 

@@ -2,6 +2,8 @@ const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { randomUUID } = require('node:crypto');
+const { UsageLog } = require('./usage');
 
 const CHANNEL_NAME = 'Copy to Desktop';
 
@@ -10,16 +12,20 @@ const CHANNEL_NAME = 'Copy to Desktop';
  */
 function activate(context) {
     const output = vscode.window.createOutputChannel(CHANNEL_NAME);
-    output.appendLine(`Copy to Desktop extension activated. Version: ${context.extension.packageJSON.version}`);
+    const usage = new UsageLog(path.join(context.globalStorageUri.fsPath, 'logs'), context.extension.packageJSON.version, output);
+    usage.event('activation', 'success');
 
     const disposable = vscode.commands.registerCommand('copyToDesktop.copy', async (uri, selectedUris) => {
+        const operationId = randomUUID();
+        const started = performance.now();
+        const stats = { files: 0, bytes: 0, links: 0, collisions: 0 };
+        usage.event('copy', 'started', { source: uri ? 'context' : selectedUris?.length ? 'selection' : 'palette', selected_count: selectedUris?.length || (uri ? 1 : 0) }, operationId);
         try {
-            output.appendLine(`Command invoked. uri: ${uri ? uri.fsPath : 'undefined'}`);
 
             const targetUri = getTargetUri(uri, selectedUris);
             if (!targetUri || targetUri.scheme !== 'file') {
                 notifyFailure('Copy to Desktop: please select a file or folder in the explorer.', output);
-                output.appendLine('No valid file or folder URI provided.');
+                await usage.event('copy', 'blocked', { error_code: 'invalid_selection' }, operationId, Math.round(performance.now() - started));
                 return;
             }
 
@@ -33,12 +39,13 @@ function activate(context) {
                     const message = `Copy to Desktop: copying ${path.basename(targetUri.fsPath)}...`;
                     vscode.window.setStatusBarMessage(message, 5000);
                     progress.report({ message });
-                    await copyResourceToDesktop(targetUri, output);
+                    const result = await copyResourceToDesktop(targetUri, output, stats);
+                    await usage.event('copy', result, stats, operationId, Math.round(performance.now() - started));
                 }
             );
         } catch (err) {
             notifyFailure(`Copy to Desktop failed: ${err.message}`, output);
-            output.appendLine(`Unexpected error: ${err.stack || err.message}`);
+            await usage.event('copy', stats.files || stats.links ? 'partial' : 'error', { ...stats, error_code: safeError(err) }, operationId, Math.round(performance.now() - started));
         }
     });
 
@@ -65,48 +72,51 @@ function getTargetUri(uri, selectedUris) {
     return undefined;
 }
 
-async function copyResourceToDesktop(uri, output) {
+async function copyResourceToDesktop(uri, output, stats) {
     const sourcePath = uri.fsPath;
-    output.appendLine(`Source: ${sourcePath}`);
+
 
     let stat;
     try {
         stat = await fs.promises.stat(sourcePath);
         if (!stat.isFile() && !stat.isDirectory()) {
             notifyFailure('Copy to Desktop: only files and folders are supported.', output);
-            output.appendLine('Selection is not a file or folder.');
-            return;
+            stats.error_code = 'unsupported_type';
+            return 'blocked';
         }
     } catch (err) {
         notifyFailure(`Copy to Desktop: cannot read selection. ${err.message}`, output);
-        output.appendLine(`Stat error: ${err.message}`);
-        return;
+        stats.error_code = safeError(err);
+        return 'error';
     }
 
     const desktopPath = path.join(os.homedir(), 'Desktop');
     const isDirectory = stat.isDirectory();
     const resourceType = isDirectory ? 'folder' : 'file';
-    const destPath = getUniqueDesktopPath(sourcePath, desktopPath, isDirectory);
+    stats.type = resourceType;
+    const destPath = getUniqueDesktopPath(sourcePath, desktopPath, isDirectory, stats);
 
     if (isDirectory && isSubpath(destPath, sourcePath)) {
         notifyFailure('Copy to Desktop: cannot copy a folder into itself.', output);
-        output.appendLine(`Destination is inside source folder: ${destPath}`);
-        return;
+        stats.error_code = 'recursive_destination';
+        return 'blocked';
     }
 
     try {
         if (isDirectory) {
-            await copyDirectory(sourcePath, destPath);
+            await copyDirectory(sourcePath, destPath, stats);
         } else {
             await fs.promises.copyFile(sourcePath, destPath);
+            stats.files++; stats.bytes += stat.size;
         }
 
         const message = `Copied ${resourceType} to Desktop: ${path.basename(destPath)}`;
         notifySuccess(message, output);
-        output.appendLine(`Success: ${destPath}`);
+        return 'success';
     } catch (err) {
         notifyFailure(`Copy to Desktop failed: ${err.message}`, output);
-        output.appendLine(`Copy error: ${err.message}`);
+        stats.error_code = safeError(err);
+        return stats.files || stats.links ? 'partial' : 'error';
     }
 }
 
@@ -128,7 +138,7 @@ function notifyFailure(message, output) {
     });
 }
 
-function getUniqueDesktopPath(sourcePath, desktopPath, isDirectory) {
+function getUniqueDesktopPath(sourcePath, desktopPath, isDirectory, stats) {
     const baseName = path.basename(sourcePath);
     let destPath = path.join(desktopPath, baseName);
 
@@ -143,6 +153,7 @@ function getUniqueDesktopPath(sourcePath, desktopPath, isDirectory) {
     do {
         destPath = path.join(desktopPath, `${name} (${counter})${ext}`);
         counter++;
+        stats.collisions++;
     } while (fs.existsSync(destPath));
 
     return destPath;
@@ -153,7 +164,7 @@ function isSubpath(childPath, parentPath) {
     return relativePath !== '' && !relativePath.startsWith('..') && !path.isAbsolute(relativePath);
 }
 
-async function copyDirectory(sourcePath, destPath) {
+async function copyDirectory(sourcePath, destPath, stats) {
     const entries = await fs.promises.readdir(sourcePath, { withFileTypes: true });
 
     await fs.promises.mkdir(destPath);
@@ -163,16 +174,21 @@ async function copyDirectory(sourcePath, destPath) {
         const destEntryPath = path.join(destPath, entry.name);
 
         if (entry.isDirectory()) {
-            await copyDirectory(sourceEntryPath, destEntryPath);
+            await copyDirectory(sourceEntryPath, destEntryPath, stats);
         } else if (entry.isSymbolicLink()) {
             const linkTarget = await fs.promises.readlink(sourceEntryPath);
             await fs.promises.symlink(linkTarget, destEntryPath);
+            stats.links++;
         } else if (entry.isFile()) {
             await fs.promises.copyFile(sourceEntryPath, destEntryPath);
+            stats.files++; stats.bytes += (await fs.promises.stat(destEntryPath)).size;
         }
     }
 }
 
+function safeError(error) {
+    return ['EACCES','EPERM','ENOENT','ENOSPC','EEXIST','EIO','ENOTDIR'].includes(error.code) ? error.code : 'copy_failed';
+}
 function deactivate() {}
 
 module.exports = {
