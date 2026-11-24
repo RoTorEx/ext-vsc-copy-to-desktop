@@ -19,8 +19,8 @@ This project uses committed local copies of the Vibecoding Kernel.
 - For user corrections, instruction conflicts, reusable agent-workflow lessons,
   kernel proposals, or a newly pulled kernel version, also read
   `.vibe/kernel/EVOLUTION.md`.
-- For product behavior or domain logic, read `BUSINESS.md` and only the relevant
-  module from `business/*`.
+- For product behavior or domain logic, read `README.md` and only the relevant
+  existing document from `docs/*`.
 - Do not edit `.vibe/kernel/*` manually or read the parent kernel during normal
   work. Refresh the local copy with `make vibe-pull`.
 - When a reusable workflow improvement belongs in the parent, run
@@ -42,8 +42,8 @@ Read these only when the task requires them:
 
 ## Rule priority
 
-1. Current user instruction
-2. Hard safety/security/boundary constraints
+1. Application/platform rules and hard safety/security/boundary constraints
+2. Current user instruction
 3. Project truth docs
 4. `.vibe/kernel/*.md`
 5. General best practices
